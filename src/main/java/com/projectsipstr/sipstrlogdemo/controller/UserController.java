@@ -1,6 +1,6 @@
 package com.projectsipstr.sipstrlogdemo.controller;
 
-import com.projectsipstr.sipstrlogdemo.entity.User;
+import com.projectsipstr.sipstrlogdemo.entity.AppUser;
 import com.projectsipstr.sipstrlogdemo.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -19,32 +19,32 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
-    public List<User> getAllUsers() {
+    public List<AppUser> getAllUsers() {
         logger.info("Fetching all users");
         return userService.getAllUsers();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<User> getUser(@PathVariable Long id) {
+    public ResponseEntity<AppUser> getUser(@PathVariable Long id) {
         logger.info("Fetching user with id: {}", id);
-        User user = userService.getUserById(id);
+        AppUser user = userService.getUserById(id);
         if (user != null) {
-            logger.debug("User found: {}", user);
+            logger.debug("AppUser found: {}", user);
             return ResponseEntity.ok(user);
         } else {
-            logger.warn("User with id {} not found", id);
+            logger.warn("AppUser with id {} not found", id);
             return ResponseEntity.notFound().build();
         }
     }
 
     @PostMapping
-    public User createUser(@RequestBody User user) {
+    public AppUser createUser(@RequestBody AppUser user) {
         logger.info("Creating user: {}", user);
         return userService.createUser(user);
     }
 
     @PutMapping("/{id}")
-    public User updateUser(@PathVariable Long id, @RequestBody User user) {
+    public AppUser updateUser(@PathVariable Long id, @RequestBody AppUser user) {
         logger.info("Updating user with id {}: {}", id, user);
         return userService.updateUser(id, user);
     }

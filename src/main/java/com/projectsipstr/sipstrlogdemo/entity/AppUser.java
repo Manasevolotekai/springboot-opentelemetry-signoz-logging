@@ -4,11 +4,12 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
+@Table(name = "app_user")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class User {
+public class AppUser {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

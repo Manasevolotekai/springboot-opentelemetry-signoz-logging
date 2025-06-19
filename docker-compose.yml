@@ -1,4 +1,4 @@
-version: "3.9"
+version: '3.9'
 
 services:
   clickhouse:
@@ -17,62 +17,50 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - backend
 
-  mysql:
-    image: mysql:8.0
-    container_name: mysql_sipstr
+  postgres:
+    image: postgis/postgis:17-3.4
+    container_name: postgres
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_USER: signozuser
-      MYSQL_PASSWORD: Manas2208
-      MYSQL_DATABASE: signoz
-    volumes:
-      - mysql-data:/var/lib/mysql
+      POSTGRES_USER: sipstr_rw_user
+      POSTGRES_PASSWORD: sipstr_rw_user
+      POSTGRES_DB: sipstr
     ports:
-      - "3306:3306"
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  mysql-init:
-    image: mysql:8.0
-    container_name: sipstrlogdemo-mysql-init
-    depends_on:
-      mysql:
-        condition: service_healthy
+      - "5432:5432"
     volumes:
-      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
-    entrypoint: >
-      sh -c "sleep 10 && mysql -hmysql_sipstr -uroot -proot signoz < /docker-entrypoint-initdb.d/schema.sql"
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sipstr_rw_user"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
 
   signoz-query-service:
     image: signoz/query-service:0.43.1
     container_name: signoz-query-service
     environment:
-
-      PREFER_DB: mysql
-      MYSQL_URI: root:root@tcp(mysql_sipstr:3306)/signoz
-
-
-      STORAGE: clickhouse
-      ClickHouseUrl: tcp://clickhouse_sipstr:9000?username=default
-      CLICKHOUSE_TRACE_DATABASE: signoz_traces
-      CLICKHOUSE_LOGS_DATABASE: signoz_logs_db
-      CLICKHOUSE_METRICS_DATABASE: signoz_metrics
-
-      SIGNOZ_JWT_SECRET: supersecurejwtsecret
-      USER_AUTH_ENABLED: "true"
+      - PREFER_DB=postgres
+      - USER_MANAGEMENT_DATABASE=postgres
+      - POSTGRES_URI=postgres://sipstr_rw_user:sipstr_rw_user@postgres:5432/sipstr
+      - STORAGE=clickhouse
+      - ClickHouseUrl=tcp://clickhouse_sipstr:9000?username=default
+      - CLICKHOUSE_TRACE_DATABASE=signoz_traces
+      - CLICKHOUSE_LOGS_DATABASE=signoz_logs_db
+      - CLICKHOUSE_METRICS_DATABASE=signoz_metrics
+      - SIGNOZ_JWT_SECRET=supersecurejwtsecret
+      - USER_AUTH_ENABLED=true
     volumes:
       - query-service-data:/var/lib/signoz
     ports:
       - "8080:8080"
       - "8085:8085"
     depends_on:
-      mysql-init:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       clickhouse:
         condition: service_healthy
     healthcheck:
@@ -81,8 +69,10 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - backend
 
-  otel_collector:
+  otel_collector_sipstr:
     image: signoz/signoz-otel-collector:0.88.3
     container_name: otel_collector_sipstr
     volumes:
@@ -101,6 +91,8 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - backend
 
   signoz-frontend:
     image: signoz/frontend:0.43.1
@@ -108,13 +100,36 @@ services:
     ports:
       - "3301:3301"
     environment:
-      FRONTEND_API_ENDPOINT: http://signoz-query-service:8080
+      FRONTEND_API_ENDPOINT: http://localhost:8080
+    volumes:
+      - /c/sipstrlogdemo/frontend-env.js:/usr/share/nginx/html/config/env.js
     depends_on:
       signoz-query-service:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - backend
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel_collector_sipstr:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
 
 volumes:
   clickhouse-data:
-  mysql-data:
+  postgres_data:
   query-service-data:
+
+networks:
+  backend:
