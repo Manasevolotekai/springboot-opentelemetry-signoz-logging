@@ -1,0 +1,120 @@
+version: "3.9"
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: clickhouse_sipstr
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--host=localhost", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_sipstr
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: signozuser
+      MYSQL_PASSWORD: Manas2208
+      MYSQL_DATABASE: signoz
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mysql-init:
+    image: mysql:8.0
+    container_name: sipstrlogdemo-mysql-init
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    entrypoint: >
+      sh -c "sleep 10 && mysql -hmysql_sipstr -uroot -proot signoz < /docker-entrypoint-initdb.d/schema.sql"
+
+  signoz-query-service:
+    image: signoz/query-service:0.43.1
+    container_name: signoz-query-service
+    environment:
+
+      PREFER_DB: mysql
+      MYSQL_URI: root:root@tcp(mysql_sipstr:3306)/signoz
+
+
+      STORAGE: clickhouse
+      ClickHouseUrl: tcp://clickhouse_sipstr:9000?username=default
+      CLICKHOUSE_TRACE_DATABASE: signoz_traces
+      CLICKHOUSE_LOGS_DATABASE: signoz_logs_db
+      CLICKHOUSE_METRICS_DATABASE: signoz_metrics
+
+      SIGNOZ_JWT_SECRET: supersecurejwtsecret
+      USER_AUTH_ENABLED: "true"
+    volumes:
+      - query-service-data:/var/lib/signoz
+    ports:
+      - "8080:8080"
+      - "8085:8085"
+    depends_on:
+      mysql-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  otel_collector:
+    image: signoz/signoz-otel-collector:0.88.3
+    container_name: otel_collector_sipstr
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    command: [ "--config=/etc/otel/config.yaml" ]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  signoz-frontend:
+    image: signoz/frontend:0.43.1
+    container_name: signoz-frontend
+    ports:
+      - "3301:3301"
+    environment:
+      FRONTEND_API_ENDPOINT: http://signoz-query-service:8080
+    depends_on:
+      signoz-query-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  clickhouse-data:
+  mysql-data:
+  query-service-data:

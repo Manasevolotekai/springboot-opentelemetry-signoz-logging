@@ -1,0 +1,32 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch:
+
+exporters:
+  clickhouselogsexporter:
+    dsn: tcp://clickhouse_sipstr:9000/?database=signoz_logs_db
+
+  logging:
+    loglevel: debug
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  telemetry:
+    logs:
+      level: "debug"
+
+  extensions: [health_check]
+
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouselogsexporter, logging]

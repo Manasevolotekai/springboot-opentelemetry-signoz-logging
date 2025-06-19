@@ -1,0 +1,8 @@
+FROM signoz/query-service:0.43.1
+
+COPY init-query-service.sh /usr/local/bin/init-query-service.sh
+COPY schema.sql /schema.sql
+
+RUN chmod +x /usr/local/bin/init-query-service.sh
+
+ENTRYPOINT ["/usr/local/bin/init-query-service.sh"]
